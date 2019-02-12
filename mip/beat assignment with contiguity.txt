@@ -1,0 +1,110 @@
+﻿using JuMP, Gurobi
+
+n=5 #size of the grid
+m=5 #number of zones
+
+D = Model(solver=GurobiSolver())
+
+w = rand(n,n) #generate random weights for each beat
+
+@variable(D, d[x=1:n, y=1:n, k=1:m], Bin) #beat (x,y) assigned to zone k
+@variable(D, h[x=1:n, y=1:n, k=1:m], Bin) #beat (x,y) is the hub of zone k
+@variable(D, e[x_1=1:n, y_1=1:n, x_2=1:n, y_2=1:n, k=1:m], Bin) #both (x_1,y_1) and (x_2, y_2) are assigned to beat k
+@variable(D, f[x_1=1:n, y_1=1:n, x_2=1:n, y_2=1:n, k=1:m] >= 0) #flow from (x_1,y_1) to (x_2, y_2) for beat k
+
+@constraint(D, assignment[x=1:n, y=1:n], sum(d[x, y, k] for k = 1:m) ==1) #each beat in one zone
+@constraint(D, one_hub[k=1:m], sum(h[x, y, k] for x = 1:n, y= 1:n) ==1) #each zone has one hub
+@constraint(D, hub_in_zone[x=1:n,y=1:n,k=1:m], h[x,y,k] <= d[x,y,k]) #a hub must be assigned to its zone
+
+#fix hub locations in opposite corners
+@constraint(D, hub1, h[1,1,1]==1)
+@constraint(D, hubn, h[n,n,n]==1)
+
+@constraint(D, flow1bl[k=1:m], f[1,1,1,2,k]+f[1,1,2,1,k]-f[1,2,1,1,k]-f[2,1,1,1,k] >= d[1,1,k] - n^2 * h[1,1,k]) #flow constraints for the bottom left beat
+@constraint(D, flow2bl[k=1:m], f[1,1,1,2,k]+f[1,1,2,1,k] <= (n^2-1)*d[1,1,k])
+
+@constraint(D, flow1br[k=1:m], f[n,1,n,2,k]+f[n,1,n-1,1,k]-f[n,2,n,1,k]-f[n-1,1,n,1,k] >= d[n,1,k]-n^2*h[n,1,k]) #flow constraints for the bottom right beat
+@constraint(D, flow2br[k=1:m], f[n,1,n,2,k]+f[n,1,n-1,1,k] <= (n^2-1)*d[n,1,k])
+
+@constraint(D, flow1tl[k=1:m], f[1,n,2,n,k]+f[1,n,1,n-1,k]-f[2,n,1,n,k]-f[1,n-1,1,n,k] >= d[1,n,k]-n^2*h[1,n,k]) #flow constraints for the top left beat
+@constraint(D, flow2tl[k=1:m], f[1,n,2,n,k]+f[1,n,1,n-1,k] <= (n^2-1)*d[1,n,k])
+
+@constraint(D, flow1tr[k=1:m], f[n,n,n-1,n,k]+f[n,n,n,n-1,k]-f[n,n-1,n,n,k]-f[n-1,n,n,n,k] >= d[n,n,k]-n^2*h[n,n,k]) #flow constraints for the top right beat
+@constraint(D, flow2tr[k=1:m], f[n,n,n-1,n,k]+f[n,n,n,n-1,k] <= (n^2-1)*d[n,n,k])
+
+@constraint(D, flow1b[x=2:n-1,k=1:m], f[x,1,x-1,1,k]+f[x,1,x+1,1,k]+f[x,1,x,2,k]-f[x-1,1,x,1,k]-f[x+1,1,x,1,k]-f[x,2,x,1,k] >= d[x,1,k] - n^2 * h[x,1,k])
+@constraint(D, flow2b[x=2:n-1,k=1:m], f[x,1,x-1,1,k]+f[x,1,x+1,1,k]+f[x,1,x,2,k] <= (n^2-1)*d[x,1,k])
+
+@constraint(D, flow1t[x=2:n-1,k=1:m], f[x,n,x-1,n,k]+f[x,n,x+1,n,k]+f[x,n,x,n-1,k]-f[x-1,n,x,n,k]-f[x+1,n,x,n,k]-f[x,n-1,x,n,k] >= d[x,n,k] - n^2 * h[x,n,k])
+@constraint(D, flow2t[x=2:n-1,k=1:m], f[x,n,x-1,n,k]+f[x,n,x+1,n,k]+f[x,n,x,n-1,k] <= (n^2-1)*d[x,n,k])
+
+@constraint(D, flow1l[y=2:n-1,k=1:m], f[1,y,1,y-1,k]+f[1,y,1,y+1,k]+f[1,y,2,y,k]-f[1,y-1,1,y,k]-f[1,y+1,1,y,k]-f[2,y,1,y,k] >= d[1,y,k] - n^2 * h[1,y,k])
+@constraint(D, flow2l[y=2:n-1,k=1:m], f[1,y,1,y-1,k]+f[1,y,1,y+1,k]+f[1,y,2,y,k] <= (n^2-1)*d[1,y,k])
+
+@constraint(D, flow1r[y=2:n-1,k=1:m], f[n,y,n,y-1,k]+f[n,y,n,y+1,k]+f[n,y,n-1,y,k]-f[n,y-1,n,y,k]-f[n,y+1,n,y,k]-f[n-1,y,n,y,k] >= d[n,y,k] - n^2 * h[n,y,k])
+@constraint(D, flow2r[y=2:n-1,k=1:m], f[n,y,n,y-1,k]+f[n,y,n,y+1,k]+f[n,y,n-1,y,k] <= (n^2-1)*d[n,y,k])
+
+@constraint(D, flow1in[x=2:n-1, y=2:n-1, k=1:m], f[x,y,x-1,y,k]+f[x,y,x,y-1,k]+f[x,y,x+1,y,k]+f[x,y,x,y+1,k]-f[x-1,y,x,y,k]-f[x,y-1,x,y,k]-f[x+1,y,x,y,k]-f[x,y+1,x,y,k] >= d[x,y,k] - n^2 * h[x,y,k]) #flow constraints for interior beats
+@constraint(D, flow2in[x=2:n-1, y=2:n-1, k=1:m], f[x,y,x-1,y,k]+f[x,y,x,y-1,k]+f[x,y,x+1,y,k]+f[x,y,x,y+1,k] <= (n^2-1)*d[x,y,k])
+
+@constraint(D, assignedpairs[x_1=1:n, y_1=1:n, x_2=1:n, y_2=1:n, k=1:m], e[x_1, x_2, y_1, y_2, k] >= d[x_1, y_1, k] + d[x_2, y_2, k] - 1) #assign values of e
+
+@objective(D, Min, sum(e[x_1, x_2, y_1, y_2, k]*w[x_1, y_1]*w[x_2, y_2] for x_1=1:n, y_1=1:n, x_2=1:n, y_2=1:n, k=1:m))
+
+status = solve(D)
+
+#print beat assignments
+for x=1:n
+    for y=1:n
+        for k=1:m
+            if getvalue(d[x,y,k])==1
+                println("beat ",(x,y)," assigned to zone ", k, ", weight ", w[x,y])
+            end
+        end
+    end
+end
+#print hub locations
+for k=1:m
+    for x=1:n
+        for y=1:n
+            if getvalue(h[x,y,k])==1
+                println("beat ",(x,y)," is hub of zone ",k)
+            end
+        end
+    end
+end
+#print nonzero flows
+for k=1:m
+    println("Zone ", k,":")
+    for x1=1:n
+        for y1=1:n
+            for x2=1:n
+                for y2=1:n
+                    if getvalue(f[x1,y1,x2,y2,k])>0
+                        println(getvalue(f[x1,y1,x2,y2,k]),": ",(x1,y1),"-->",(x2,y2))
+                    end
+                end
+            end
+        end
+    end
+    println("")
+end
+
+#compute total loss
+wbar=sum(w[x,y] for x=1:n, y=1:n)/m #average zone weight
+sum( (sum(getvalue(d[x,y,k])*w[x,y] for x=1:n, y=1:n)-wbar)^2 for k=1:m)
+
+#print weight of each zone
+for k=1:m
+    println("Total weight of zone ", k, " is ",sum(getvalue(d[x,y,k])*w[x,y] for x=1:n, y=1:n))
+end
+
+for k=1:m
+    println("Zone ", k,":")
+    for x1=1:n, y1=1:n, x2=1:n, y2=1:n
+        if getvalue(f[x1,y1,x2,y2,k])>0
+            println(getvalue(f[x1,y1,x2,y2,k]),": ",(x1,y1),"-->",(x2,y2))
+        end
+    end
+    println("")
+end
